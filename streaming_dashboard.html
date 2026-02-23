@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Streaming Analytics Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080c14;
+    --surface: #0d1420;
+    --surface2: #111927;
+    --border: #1e2d42;
+    --accent: #00d4ff;
+    --accent2: #ff6b35;
+    --accent3: #7fff6b;
+    --accent4: #bf7fff;
+    --text: #e8f4fd;
+    --muted: #5a7a94;
+    --glow: 0 0 20px rgba(0,212,255,0.3);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'DM Mono', monospace; background: var(--bg); color: var(--text); min-height:100vh; }
+
+  /* NAV */
+  .nav { 
+    position: fixed; top:0; left:0; right:0; z-index:100;
+    background: rgba(8,12,20,0.95); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 2rem; height: 60px;
+    gap: 2rem;
+  }
+  .nav-logo { 
+    font-family: 'Syne', sans-serif; font-weight:800; font-size:1.1rem;
+    color: var(--accent); letter-spacing: 2px; margin-right: auto;
+  }
+  .nav-tab {
+    cursor: pointer; padding: 0.4rem 1.2rem; border-radius: 4px;
+    font-size: 0.75rem; letter-spacing: 1px; text-transform: uppercase;
+    border: 1px solid transparent; transition: all 0.2s; color: var(--muted);
+  }
+  .nav-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.05); }
+  .nav-tab:hover:not(.active) { color: var(--text); border-color: var(--border); }
+
+  /* PAGES */
+  .page { display: none; padding: 80px 2rem 2rem; min-height: 100vh; }
+  .page.active { display: block; }
+
+  /* SECTION HEADER */
+  .section-header { margin-bottom: 2rem; }
+  .section-title { 
+    font-family: 'Syne', sans-serif; font-weight:800; font-size:1.8rem;
+    color: var(--text); letter-spacing: -0.5px;
+  }
+  .section-title span { color: var(--accent); }
+  .section-sub { color: var(--muted); font-size:0.75rem; margin-top:0.3rem; letter-spacing:1px; }
+
+  /* GRID */
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap:1rem; margin-bottom:1.5rem; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap:1rem; margin-bottom:1.5rem; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1.5rem; }
+  .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap:1rem; margin-bottom:1.5rem; }
+  .grid-1-2 { display: grid; grid-template-columns: 1fr 2fr; gap:1rem; margin-bottom:1.5rem; }
+
+  /* KPI CARD */
+  .kpi-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.4rem;
+    position: relative; overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .kpi-card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  }
+  .kpi-card.c1::before { background: var(--accent); }
+  .kpi-card.c2::before { background: var(--accent2); }
+  .kpi-card.c3::before { background: var(--accent3); }
+  .kpi-card.c4::before { background: var(--accent4); }
+  .kpi-card:hover { border-color: var(--accent); box-shadow: var(--glow); }
+  .kpi-label { font-size:0.65rem; text-transform:uppercase; letter-spacing:2px; color:var(--muted); margin-bottom:0.6rem; }
+  .kpi-value { font-family:'Syne',sans-serif; font-size:2.2rem; font-weight:800; line-height:1; }
+  .kpi-value.c1 { color:var(--accent); }
+  .kpi-value.c2 { color:var(--accent2); }
+  .kpi-value.c3 { color:var(--accent3); }
+  .kpi-value.c4 { color:var(--accent4); }
+  .kpi-badge {
+    display:inline-flex; align-items:center; gap:0.3rem;
+    margin-top:0.6rem; padding:0.2rem 0.6rem; border-radius:20px;
+    font-size:0.7rem; font-weight:500;
+  }
+  .kpi-badge.up { background:rgba(127,255,107,0.1); color:var(--accent3); }
+  .kpi-badge.down { background:rgba(255,107,53,0.1); color:var(--accent2); }
+
+  /* CHART CARD */
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.4rem;
+  }
+  .chart-title { 
+    font-family:'Syne',sans-serif; font-size:0.85rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:1.5px; color:var(--text);
+    margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem;
+  }
+  .chart-title .dot { width:6px; height:6px; border-radius:50%; background:var(--accent); }
+  .chart-title .dot.o { background:var(--accent2); }
+  .chart-title .dot.g { background:var(--accent3); }
+  .chart-title .dot.p { background:var(--accent4); }
+  canvas { max-height: 300px; }
+
+  /* TABLE */
+  .rank-table { width:100%; border-collapse:collapse; }
+  .rank-table th { 
+    font-size:0.6rem; text-transform:uppercase; letter-spacing:2px;
+    color:var(--muted); padding:0.5rem 0; border-bottom:1px solid var(--border);
+    text-align:left;
+  }
+  .rank-table td { 
+    padding:0.6rem 0; font-size:0.78rem; border-bottom:1px solid rgba(30,45,66,0.5);
+  }
+  .rank-num { color:var(--muted); width:24px; }
+  .rank-bar-wrap { flex:1; background:rgba(30,45,66,0.6); border-radius:2px; height:4px; overflow:hidden; }
+  .rank-bar { height:100%; border-radius:2px; background: linear-gradient(90deg, var(--accent), var(--accent4)); }
+  .rank-val { color:var(--accent); font-family:'DM Mono',monospace; font-size:0.72rem; width:50px; text-align:right; }
+  .td-flex { display:flex; align-items:center; gap:0.8rem; }
+
+  /* MAP */
+  #map { height: 420px; border-radius:8px; border:1px solid var(--border); }
+  .leaflet-container { background:#080c14 !important; }
+
+  /* BADGE PILLS */
+  .pill { 
+    display:inline-block; padding:0.2rem 0.6rem; border-radius:20px;
+    font-size:0.65rem; letter-spacing:1px; text-transform:uppercase;
+    background:rgba(0,212,255,0.1); color:var(--accent); border:1px solid rgba(0,212,255,0.2);
+    margin:0.15rem;
+  }
+  .pill.o { background:rgba(255,107,53,0.1); color:var(--accent2); border-color:rgba(255,107,53,0.2); }
+  .pill.g { background:rgba(127,255,107,0.1); color:var(--accent3); border-color:rgba(127,255,107,0.2); }
+  .pill.p { background:rgba(191,127,255,0.1); color:var(--accent4); border-color:rgba(191,127,255,0.2); }
+
+  /* STAT ROW */
+  .stat-row { display:flex; justify-content:space-between; align-items:center; padding:0.7rem 0; border-bottom:1px solid rgba(30,45,66,0.5); }
+  .stat-row:last-child { border-bottom:none; }
+  .stat-key { font-size:0.75rem; color:var(--muted); }
+  .stat-val { font-size:0.8rem; color:var(--text); font-weight:500; }
+
+  /* DONUT LEGEND */
+  .legend { display:flex; flex-wrap:wrap; gap:0.6rem; margin-top:0.8rem; }
+  .legend-item { display:flex; align-items:center; gap:0.4rem; font-size:0.68rem; color:var(--muted); }
+  .legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+  @media(max-width:900px){
+    .grid-4,.grid-3,.grid-2,.grid-2-1,.grid-1-2 { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">◈ STREAM·ANALYTICS</div>
+  <div class="nav-tab active" onclick="showPage(0,this)">01 — Overview</div>
+  <div class="nav-tab" onclick="showPage(1,this)">02 — Coğrafi</div>
+  <div class="nav-tab" onclick="showPage(2,this)">03 — Content & Dil</div>
+</nav>
+
+<!-- PAGE 1: OVERVIEW -->
+<div class="page active" id="page0">
+  <div class="section-header">
+    <div class="section-title">Platform <span>KPI</span> Overview</div>
+    <div class="section-sub">// Bütün zamanlar üzrə ümumi göstəricilər — release_year əsaslı analiz</div>
+  </div>
+
+  <div class="grid-4">
+    <div class="kpi-card c1">
+      <div class="kpi-label">Ümumi Şou Sayı</div>
+      <div class="kpi-value c1" id="kpi-total">—</div>
+      <div class="kpi-badge up">↑ bütün vaxt</div>
+    </div>
+    <div class="kpi-card c2">
+      <div class="kpi-label">Ort. Popularity</div>
+      <div class="kpi-value c2" id="kpi-pop">—</div>
+      <div class="kpi-badge up" id="kpi-pop-change">↑ —</div>
+    </div>
+    <div class="kpi-card c3">
+      <div class="kpi-label">Ort. Vote Average</div>
+      <div class="kpi-value c3" id="kpi-vote">—</div>
+      <div class="kpi-badge" id="kpi-vote-badge">— —</div>
+    </div>
+    <div class="kpi-card c4">
+      <div class="kpi-label">Ümumi Vote Count</div>
+      <div class="kpi-value c4" id="kpi-votes">—</div>
+      <div class="kpi-badge up">↑ kümülatif</div>
+    </div>
+  </div>
+
+  <div class="grid-2-1">
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot"></span>İllər Üzrə Çıxarılan Şou Sayı + YoY Artım %</div>
+      <canvas id="yearChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot o"></span>YoY Artım Faizi</div>
+      <canvas id="yoyChart"></canvas>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot g"></span>Top 10 Ölkə — Şou Sayına Görə</div>
+      <canvas id="countryChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot p"></span>Top Janrlar</div>
+      <canvas id="genreChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 2: GEO -->
+<div class="page" id="page1">
+  <div class="section-header">
+    <div class="section-title">Coğrafi <span>Xəritə</span> Analizi</div>
+    <div class="section-sub">// Ölkələr üzrə kontentин paylanması</div>
+  </div>
+
+  <div id="map"></div>
+  <br>
+
+  <div class="grid-3">
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot"></span>Region Üzrə Bölgü</div>
+      <canvas id="regionChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot o"></span>Ölkə — Ort. Vote Average</div>
+      <canvas id="countryVoteChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot g"></span>Ölkə — Ort. Popularity</div>
+      <canvas id="countryPopChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 3: CONTENT & LANGUAGE -->
+<div class="page" id="page2">
+  <div class="section-header">
+    <div class="section-title">Content & <span>Dil</span> Analizi</div>
+    <div class="section-sub">// Movies, TV Shows və Dil üzrə paylanma</div>
+  </div>
+
+  <div class="grid-4">
+    <div class="kpi-card c1">
+      <div class="kpi-label">TV Show Sayı</div>
+      <div class="kpi-value c1" id="kpi-tvshow">—</div>
+    </div>
+    <div class="kpi-card c2">
+      <div class="kpi-label">Movie Sayı</div>
+      <div class="kpi-value c2" id="kpi-movie">—</div>
+    </div>
+    <div class="kpi-card c3">
+      <div class="kpi-label">Unikal Dil</div>
+      <div class="kpi-value c3" id="kpi-lang">—</div>
+    </div>
+    <div class="kpi-card c4">
+      <div class="kpi-label">Unikal Janr</div>
+      <div class="kpi-value c4" id="kpi-genre">—</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot"></span>TV Show vs Movie — İllər Üzrə</div>
+      <canvas id="typeYearChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot o"></span>Top 15 Dil — Şou Sayı</div>
+      <canvas id="langChart"></canvas>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot g"></span>Dil Üzrə Ort. Vote Average</div>
+      <canvas id="langVoteChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><span class="dot p"></span>Dil Üzrə Ort. Popularity</div>
+      <canvas id="langPopChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ SIMULATED DATA based on visible screenshots ============
+// Real data would be loaded via CSV. Using statistically representative simulation.
+
+function rand(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function frand(min,max,d=1){ return parseFloat((Math.random()*(max-min)+min).toFixed(d)); }
+
+// --- COUNTRY DATA (realistic for streaming platforms) ---
+const countryData = [
+  {name:"United States", shows:2800, voteAvg:65, pop:450000, region:"North America", lat:37.09, lng:-95.71},
+  {name:"United Kingdom", shows:680, voteAvg:71, pop:380000, region:"Europe", lat:55.37, lng:-3.44},
+  {name:"India", shows:620, voteAvg:58, pop:310000, region:"Asia", lat:20.59, lng:78.96},
+  {name:"Canada", shows:490, voteAvg:68, pop:290000, region:"North America", lat:56.13, lng:-106.35},
+  {name:"Japan", shows:380, voteAvg:75, pop:420000, region:"Asia", lat:36.20, lng:138.25},
+  {name:"South Korea", shows:320, voteAvg:82, pop:680000, region:"Asia", lat:35.91, lng:127.77},
+  {name:"France", shows:290, voteAvg:69, pop:260000, region:"Europe", lat:46.23, lng:2.21},
+  {name:"Germany", shows:240, voteAvg:70, pop:240000, region:"Europe", lat:51.17, lng:10.45},
+  {name:"Spain", shows:210, voteAvg:66, pop:220000, region:"Europe", lat:40.46, lng:-3.75},
+  {name:"Brazil", shows:180, voteAvg:62, pop:195000, region:"South America", lat:-14.24, lng:-51.93},
+  {name:"Australia", shows:160, voteAvg:67, pop:185000, region:"Oceania", lat:-25.27, lng:133.78},
+  {name:"Mexico", shows:140, voteAvg:60, pop:175000, region:"North America", lat:23.63, lng:-102.55},
+  {name:"Russia", shows:130, voteAvg:63, pop:160000, region:"Europe", lat:61.52, lng:105.32},
+  {name:"Turkey", shows:120, voteAvg:64, pop:155000, region:"Europe", lat:38.96, lng:35.24},
+  {name:"Italy", shows:115, voteAvg:68, pop:148000, region:"Europe", lat:41.87, lng:12.57},
+];
+
+// --- YEAR DATA ---
+const years = [2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024];
+const yearCounts = [23,45,78,120,185,260,380,510,640,780,650,590,520,480,410];
+const yoyPct = yearCounts.map((v,i)=> i===0 ? 0 : parseFloat(((v-yearCounts[i-1])/yearCounts[i-1]*100).toFixed(1)));
+
+// --- LANGUAGE DATA ---
+const langData = [
+  {lang:"en", label:"English", shows:4200, voteAvg:68, pop:380000},
+  {lang:"ko", label:"Korean", shows:380, voteAvg:82, pop:620000},
+  {lang:"ja", label:"Japanese", shows:340, voteAvg:74, pop:410000},
+  {lang:"fr", label:"French", shows:290, voteAvg:68, pop:245000},
+  {lang:"hi", label:"Hindi", shows:270, voteAvg:59, pop:290000},
+  {lang:"es", label:"Spanish", shows:260, voteAvg:65, pop:215000},
+  {lang:"de", label:"German", shows:200, voteAvg:70, pop:230000},
+  {lang:"ru", label:"Russian", shows:160, voteAvg:63, pop:170000},
+  {lang:"pt", label:"Portuguese", shows:150, voteAvg:62, pop:185000},
+  {lang:"zh", label:"Chinese", shows:140, voteAvg:71, pop:320000},
+  {lang:"it", label:"Italian", shows:120, voteAvg:67, pop:145000},
+  {lang:"tr", label:"Turkish", shows:110, voteAvg:64, pop:150000},
+  {lang:"da", label:"Danish", shows:60, voteAvg:72, pop:120000},
+  {lang:"cs", label:"Czech", shows:45, voteAvg:65, pop:105000},
+  {lang:"el", label:"Greek", shows:40, voteAvg:61, pop:100000},
+];
+
+// --- GENRE DATA ---
+const genreData = [
+  {genre:"Drama", count:1820},
+  {genre:"Comedy", count:1240},
+  {genre:"Action & Adventure", count:980},
+  {genre:"Documentary", count:760},
+  {genre:"Sci-Fi & Fantasy", count:640},
+  {genre:"Thriller", count:580},
+  {genre:"Reality", count:520},
+  {genre:"Romance", count:490},
+  {genre:"Horror", count:380},
+  {genre:"Animation", count:350},
+];
+
+// --- TYPE DATA ---
+const tvShowByYear = yearCounts.map(v=> Math.floor(v*0.65));
+const movieByYear = yearCounts.map(v=> Math.floor(v*0.35));
+
+// --- KPIs ---
+const totalShows = 8765;
+const avgPop = 312450;
+const avgVote = 66.4;
+const totalVotes = 4280000;
+const prevYearPop = 288000;
+
+document.getElementById('kpi-total').textContent = totalShows.toLocaleString();
+document.getElementById('kpi-pop').textContent = (avgPop/1000).toFixed(0)+'K';
+const popChange = ((avgPop-prevYearPop)/prevYearPop*100).toFixed(1);
+document.getElementById('kpi-pop-change').textContent = `↑ ${popChange}% YoY`;
+document.getElementById('kpi-pop-change').className = 'kpi-badge up';
+document.getElementById('kpi-vote').textContent = avgVote.toFixed(1);
+const vBadge = document.getElementById('kpi-vote-badge');
+vBadge.textContent = '▲ +2.1 YoY'; vBadge.className='kpi-badge up';
+document.getElementById('kpi-votes').textContent = (totalVotes/1000000).toFixed(2)+'M';
+
+document.getElementById('kpi-tvshow').textContent = '5,697';
+document.getElementById('kpi-movie').textContent = '3,068';
+document.getElementById('kpi-lang').textContent = langData.length;
+document.getElementById('kpi-genre').textContent = '28';
+
+// ========== CHART CONFIG ==========
+const COLORS = ['#00d4ff','#ff6b35','#7fff6b','#bf7fff','#ffd700','#ff4dab','#4dffb4','#ff9f4d','#4d79ff','#ff4d4d','#c8ff4d','#4dffd4'];
+const chartDefaults = {
+  plugins:{ legend:{ labels:{ color:'#5a7a94', font:{family:'DM Mono',size:10}, boxWidth:10 }}},
+  scales:{
+    x:{ ticks:{color:'#5a7a94', font:{family:'DM Mono',size:10}}, grid:{color:'rgba(30,45,66,0.4)'}, border:{color:'#1e2d42'} },
+    y:{ ticks:{color:'#5a7a94', font:{family:'DM Mono',size:10}}, grid:{color:'rgba(30,45,66,0.4)'}, border:{color:'#1e2d42'} }
+  }
+};
+
+function makeChart(id, cfg){ 
+  return new Chart(document.getElementById(id), cfg); 
+}
+
+// 1. Year trend + bar
+makeChart('yearChart',{
+  type:'bar',
+  data:{
+    labels: years,
+    datasets:[
+      { type:'bar', label:'Şou Sayı', data:yearCounts, backgroundColor:'rgba(0,212,255,0.25)', borderColor:'#00d4ff', borderWidth:1.5, borderRadius:3 },
+      { type:'line', label:'YoY %', data:yoyPct, yAxisID:'y2', borderColor:'#ff6b35', borderWidth:2, pointRadius:3, pointBackgroundColor:'#ff6b35', tension:0.3, fill:false }
+    ]
+  },
+  options:{
+    ...chartDefaults,
+    plugins:{ legend:{ labels:{ color:'#5a7a94', font:{family:'DM Mono',size:10}, boxWidth:10 }}},
+    scales:{
+      x:{ ticks:{color:'#5a7a94',font:{family:'DM Mono',size:10}}, grid:{color:'rgba(30,45,66,0.4)'} },
+      y:{ ticks:{color:'#5a7a94',font:{family:'DM Mono',size:10}}, grid:{color:'rgba(30,45,66,0.4)'} },
+      y2:{ position:'right', ticks:{color:'#ff6b35',font:{family:'DM Mono',size:10}}, grid:{display:false} }
+    }
+  }
+});
+
+// 2. YoY bar
+makeChart('yoyChart',{
+  type:'bar',
+  data:{
+    labels: years.slice(1),
+    datasets:[{ label:'YoY Artım %', data:yoyPct.slice(1),
+      backgroundColor: yoyPct.slice(1).map(v=> v>=0?'rgba(127,255,107,0.35)':'rgba(255,107,53,0.35)'),
+      borderColor: yoyPct.slice(1).map(v=> v>=0?'#7fff6b':'#ff6b35'),
+      borderWidth:1.5, borderRadius:3
+    }]
+  },
+  options:{ ...chartDefaults, plugins:{legend:{display:false}} }
+});
+
+// 3. Country bar
+const top10 = countryData.slice(0,10);
+makeChart('countryChart',{
+  type:'bar',
+  data:{
+    labels: top10.map(d=>d.name.length>12?d.name.slice(0,12)+'…':d.name),
+    datasets:[{ label:'Şou Sayı', data:top10.map(d=>d.shows),
+      backgroundColor: COLORS.map(c=>c+'44'), borderColor:COLORS, borderWidth:1.5, borderRadius:3
+    }]
+  },
+  options:{ ...chartDefaults, indexAxis:'y', plugins:{legend:{display:false}} }
+});
+
+// 4. Genre donut
+makeChart('genreChart',{
+  type:'doughnut',
+  data:{
+    labels: genreData.map(d=>d.genre),
+    datasets:[{ data:genreData.map(d=>d.count),
+      backgroundColor: COLORS.map(c=>c+'88'), borderColor: COLORS, borderWidth:1.5, hoverOffset:8
+    }]
+  },
+  options:{
+    cutout:'60%',
+    plugins:{ legend:{ position:'bottom', labels:{ color:'#5a7a94', font:{family:'DM Mono',size:9}, boxWidth:8, padding:8 }}}
+  }
+});
+
+// 5. Region donut
+const regionMap={};
+countryData.forEach(d=>{ regionMap[d.region]=(regionMap[d.region]||0)+d.shows; });
+const regionLabels=Object.keys(regionMap); const regionVals=Object.values(regionMap);
+makeChart('regionChart',{
+  type:'doughnut',
+  data:{ labels:regionLabels, datasets:[{ data:regionVals, backgroundColor:COLORS.map(c=>c+'88'), borderColor:COLORS, borderWidth:1.5, hoverOffset:8 }]},
+  options:{ cutout:'55%', plugins:{ legend:{ position:'bottom', labels:{ color:'#5a7a94', font:{family:'DM Mono',size:9}, boxWidth:8, padding:6 }}}}
+});
+
+// 6. Country vote avg (top 8)
+const top8vote = [...countryData].sort((a,b)=>b.voteAvg-a.voteAvg).slice(0,8);
+makeChart('countryVoteChart',{
+  type:'bar',
+  data:{
+    labels: top8vote.map(d=>d.name.length>10?d.name.slice(0,10)+'…':d.name),
+    datasets:[{ label:'Ort. Vote Avg', data:top8vote.map(d=>d.voteAvg),
+      backgroundColor:'rgba(191,127,255,0.35)', borderColor:'#bf7fff', borderWidth:1.5, borderRadius:3
+    }]
+  },
+  options:{ ...chartDefaults, indexAxis:'y', plugins:{legend:{display:false}} }
+});
+
+// 7. Country pop (top 8)
+const top8pop = [...countryData].sort((a,b)=>b.pop-a.pop).slice(0,8);
+makeChart('countryPopChart',{
+  type:'bar',
+  data:{
+    labels: top8pop.map(d=>d.name.length>10?d.name.slice(0,10)+'…':d.name),
+    datasets:[{ label:'Ort. Popularity', data:top8pop.map(d=>d.pop),
+      backgroundColor:'rgba(127,255,107,0.35)', borderColor:'#7fff6b', borderWidth:1.5, borderRadius:3
+    }]
+  },
+  options:{ ...chartDefaults, indexAxis:'y', plugins:{legend:{display:false}} }
+});
+
+// 8. Type by year
+makeChart('typeYearChart',{
+  type:'bar',
+  data:{
+    labels: years,
+    datasets:[
+      { label:'TV Show', data:tvShowByYear, backgroundColor:'rgba(0,212,255,0.4)', borderColor:'#00d4ff', borderWidth:1.5, borderRadius:2 },
+      { label:'Movie', data:movieByYear, backgroundColor:'rgba(255,107,53,0.4)', borderColor:'#ff6b35', borderWidth:1.5, borderRadius:2 }
+    ]
+  },
+  options:{ ...chartDefaults, scales:{
+    x:{ stacked:true, ticks:{color:'#5a7a94',font:{family:'DM Mono',size:10}}, grid:{color:'rgba(30,45,66,0.4)'} },
+    y:{ stacked:true, ticks:{color:'#5a7a94',font:{family:'DM Mono',size:10}}, grid:{color:'rgba(30,45,66,0.4)'} }
+  }}
+});
+
+// 9. Language count
+const top15lang = langData.slice(0,12);
+makeChart('langChart',{
+  type:'bar',
+  data:{
+    labels: top15lang.map(d=>d.label),
+    datasets:[{ label:'Şou Sayı', data:top15lang.map(d=>d.shows),
+      backgroundColor: COLORS.map(c=>c+'44'), borderColor:COLORS, borderWidth:1.5, borderRadius:3
+    }]
+  },
+  options:{ ...chartDefaults, indexAxis:'y', plugins:{legend:{display:false}} }
+});
+
+// 10. Lang vote avg
+const top10langVote = [...langData].sort((a,b)=>b.voteAvg-a.voteAvg).slice(0,10);
+makeChart('langVoteChart',{
+  type:'bar',
+  data:{
+    labels: top10langVote.map(d=>d.label),
+    datasets:[{ label:'Ort. Vote Avg', data:top10langVote.map(d=>d.voteAvg),
+      backgroundColor:'rgba(127,255,107,0.35)', borderColor:'#7fff6b', borderWidth:1.5, borderRadius:3
+    }]
+  },
+  options:{ ...chartDefaults, indexAxis:'y', plugins:{legend:{display:false}} }
+});
+
+// 11. Lang popularity
+const top10langPop = [...langData].sort((a,b)=>b.pop-a.pop).slice(0,10);
+makeChart('langPopChart',{
+  type:'bar',
+  data:{
+    labels: top10langPop.map(d=>d.label),
+    datasets:[{ label:'Ort. Popularity', data:top10langPop.map(d=>d.pop),
+      backgroundColor:'rgba(191,127,255,0.35)', borderColor:'#bf7fff', borderWidth:1.5, borderRadius:3
+    }]
+  },
+  options:{ ...chartDefaults, indexAxis:'y', plugins:{legend:{display:false}} }
+});
+
+// ========== MAP ==========
+function initMap(){
+  const map = L.map('map', { zoomControl:true, attributionControl:false }).setView([20,10],2);
+  
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    maxZoom:18, subdomains:'abcd'
+  }).addTo(map);
+
+  const maxShows = Math.max(...countryData.map(d=>d.shows));
+  countryData.forEach(d=>{
+    const r = Math.max(8, (d.shows/maxShows)*55);
+    const circle = L.circleMarker([d.lat, d.lng],{
+      radius: r,
+      fillColor: '#00d4ff',
+      color: '#00d4ff',
+      weight: 1,
+      opacity: 0.8,
+      fillOpacity: 0.3
+    }).addTo(map);
+    circle.bindPopup(`
+      <div style="font-family:'DM Mono',monospace;background:#0d1420;color:#e8f4fd;padding:1rem;border-radius:6px;min-width:180px;border:1px solid #1e2d42">
+        <div style="font-weight:700;color:#00d4ff;font-size:0.9rem;margin-bottom:0.5rem">${d.name}</div>
+        <div style="font-size:0.75rem;color:#5a7a94">Şou Sayı</div>
+        <div style="font-size:1.1rem;color:#fff;font-weight:600">${d.shows.toLocaleString()}</div>
+        <div style="font-size:0.75rem;color:#5a7a94;margin-top:0.4rem">Vote Avg</div>
+        <div style="color:#7fff6b">${d.voteAvg}</div>
+        <div style="font-size:0.75rem;color:#5a7a94;margin-top:0.4rem">Popularity</div>
+        <div style="color:#bf7fff">${(d.pop/1000).toFixed(0)}K</div>
+      </div>
+    `, {className:'dark-popup'});
+  });
+}
+
+// ========== NAV ==========
+function showPage(idx, el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page'+idx).classList.add('active');
+  el.classList.add('active');
+  if(idx===1 && !window._mapInit){ window._mapInit=true; setTimeout(initMap,100); }
+}
+</script>
+</body>
+</html>
